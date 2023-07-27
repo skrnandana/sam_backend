@@ -1,0 +1,6 @@
+pytest
+numexpr
+matplotlib
+numpy
+requests==2.30.0
+urllib3<2

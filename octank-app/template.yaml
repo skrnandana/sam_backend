@@ -1,0 +1,154 @@
+
+#08-04-2023
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  octank-app
+
+  Sample SAM Template for octank-app
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+
+Parameters:
+ AccessToken:
+    Type: String
+    Description: Github access token
+ GithubURL:
+    Type: String
+    Description: Github Repo
+
+Globals:
+  Api:
+    Auth:
+      DefaultAuthorizer: None
+      AddDefaultAuthorizerToCorsPreflight: False
+    TracingEnabled: true
+    
+Resources:
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: amplifyappsam
+      # Repository: 'https://github.com/skrnandana/octankfrontend.git'
+      Repository : !Ref GithubURL
+      AccessToken: !Ref AccessToken
+      IAMServiceRole: !GetAtt AmplifyRole.Arn
+      EnvironmentVariables:
+        - Name: ENDPOINT
+          Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Stage/octank/"
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      BranchName: main
+      AppId: !GetAtt AmplifyApp.AppId
+      EnableAutoBuild: true
+
+  AmplifyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - amplify.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: Amplify
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: "amplify:*"
+                Resource: "*"
+
+  ImageS3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      AccelerateConfiguration:
+        AccelerationStatus: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - POST
+              - GET
+            AllowedOrigins:
+              - '*'
+      BucketName: images-bucket-octank
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireObjects
+            Status: Enabled
+            ExpirationInDays: 10
+  LangchainLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: langchainlayer/
+      CompatibleRuntimes:
+        - python3.9
+    Metadata:
+      BuildMethod: makefile
+
+  LambdaFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: src/
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Timeout: 80
+      MemorySize: 500
+      Events:
+        ApiEvent:
+          Type: Api 
+          Properties:
+            Path: /octank
+            Method: post
+            Auth:
+              DefaultAuthorizer: AWS_IAM
+              AddDefaultAuthorizerToCorsPreflight: False    
+      Layers: 
+           - arn:aws:lambda:us-east-1:499192946430:layer:LangchainLayer:4
+      Policies:
+        - AmazonRekognitionFullAccess
+        - AmazonSageMakerFullAccess
+        - ComprehendFullAccess
+        - S3FullAccessPolicy:
+            BucketName: !Ref ImageS3Bucket
+      Environment:
+        Variables:
+          BUCKET: !Ref ImageS3Bucket
+    
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+
+  ApplicationInsightsMonitoring:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'
+
+Outputs:
+  StableDiffusionApi:
+    Description: API Gateway endpoint URL for Stage for octank-app function
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Stage/octank/"
+  LambdaFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt LambdaFunction.Arn
+  LambdaFunctionIamRole:
+    Description: Implicit IAM Role created for Lambda function
+    Value: !GetAtt LambdaFunctionRole.Arn

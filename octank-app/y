@@ -1,0 +1,11 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "octank-text-to-image"
+resolve_s3 = true
+s3_prefix = "octank-text-to-image"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+image_repositories = []
+parameter_overrides = "AccessToken=\"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\""
